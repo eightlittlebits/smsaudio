@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 using static System.Console;
 
@@ -11,68 +8,206 @@ namespace smsaudio
 {
     class Program
     {
-        const int ClockFrequencyNTSC = 3579545; // Hz
-        const int ClockFrequencyPAL = 3546893; // Hz
+        static double _updateClock;
+        static uint _sampleRate = 44100;
+        static double _sampleFrequency;
 
         static void Main(string[] args)
         {
-            using (BinaryWriter writer = new BinaryWriter(File.Open("output.raw", FileMode.Create)))
+            string vgmPath = args[0];
+
+            if (!File.Exists(vgmPath))
             {
-                SN76489 psg = new SN76489(writer, 16, 0x09);
+                WriteLine($"File {vgmPath} not found.");
+                return;
+            }
 
-                //SetTone(psg, 0, 440);
-                //SetTone(psg, 1, 329.6);
-                //SetTone(psg, 2, 392);
+            string vgmFileName = Path.GetFileNameWithoutExtension(vgmPath);
 
-                //byte volume = 0;
+            bool isError = false;
 
-                //SetVolume(psg, 0, volume);
-                //SetVolume(psg, 1, volume);
-                //SetVolume(psg, 2, volume);
+            VgmFile vgmFile;
 
-                //SetTone(psg, 2, 10000);
-                //SetVolume(psg, 2, 0);
+            using (var fileStream = File.Open(vgmPath, FileMode.Open, FileAccess.Read))
+            {
+                vgmFile = VgmFile.Load(fileStream);
+            }
 
-                psg.WriteData(0xE4);
-                SetVolume(psg, 3, 0);
+            //// print file info
+            //WriteLine($"Filename: {Path.GetFileName(vgmPath)}");
+            //WriteLine();
+            //WriteLine($"Track:    {vgmFile.Gd3.English.TrackName}");
+            //WriteLine($"Game:     {vgmFile.Gd3.English.GameName}");
+            //WriteLine($"System:   {vgmFile.Gd3.English.SystemName}");
+            //WriteLine($"Composer: {vgmFile.Gd3.English.TrackAuthor}");
 
-                // generate 5 seconds worth of audio
-                for (int i = 0; i < 5; i++)
+            //WriteLine($"Release:  {vgmFile.Gd3.ReleaseDate}");
+            //WriteLine($"VGM By:   {vgmFile.Gd3.VgmAuthor}");
+            //WriteLine();
+            //WriteLine("Notes:");
+            //WriteLine(vgmFile.Gd3.Notes);
+            //WriteLine();
+
+            // generate the audio samples into a memory stream
+            using (MemoryStream samples = new MemoryStream())
+            {
+                using (var writer = new BinaryWriter(samples, Encoding.ASCII, true))
                 {
-                    psg.Update(ClockFrequencyNTSC);
+                    SN76489 psg = new SN76489(vgmFile.Header.SN76489ShiftRegisterWidth, vgmFile.Header.SN76489Feedback);
+
+                    _sampleFrequency = vgmFile.Header.SN76489Clock / (double)_sampleRate;
+
+                    bool playing = true;
+
+                    int loopLimit = 0;
+                    int loopCount = 0;
+
+                    uint playCursor = 0;
+
+                    while (playing)
+                    {
+                        int command = vgmFile.VgmData[playCursor++];
+
+                        switch (command)
+                        {
+                            // 0x50 dd: PSG(SN76489 / SN76496) write value dd
+                            case 0x50:
+                                psg.WriteData(vgmFile.VgmData[playCursor++]);
+                                break;
+
+                            //0x61 nn nn : Wait n samples, n can range from 0 to 65535 (approx 1.49
+                            //             seconds). Longer pauses than this are represented by multiple
+                            //             wait commands.
+                            case 0x61:
+                                int sampleCount = vgmFile.VgmData[playCursor++];
+                                sampleCount |= vgmFile.VgmData[playCursor++] << 8;
+
+                                OutputSamples(psg, writer, sampleCount);
+                                break;
+
+                            // 0x62: wait 735 samples(60th of a second), a shortcut for 0x61 0xdf 0x02
+                            case 0x62:
+                                OutputSamples(psg, writer, 735);
+                                break;
+
+                            // 0x63: wait 882 samples(50th of a second), a shortcut for 0x61 0x72 0x03
+                            case 0x63:
+                                OutputSamples(psg, writer, 882);
+                                break;
+
+                            // 0x66: end of sound data
+                            case 0x66:
+                                if (vgmFile.LoopOffset != 0 && loopCount < loopLimit)
+                                {
+                                    playCursor = vgmFile.LoopOffset;
+                                    loopCount++;
+                                }
+                                else
+                                {
+                                    playing = false;
+                                }
+                                break;
+
+                            // 0x7n: wait n+1 samples, n can range from 0 to 15.
+                            case 0x70: case 0x71: case 0x72: case 0x73:
+                            case 0x74: case 0x75: case 0x76: case 0x77:
+                            case 0x78: case 0x79: case 0x7A: case 0x7B:
+                            case 0x7C: case 0x7D: case 0x7E: case 0x7F:
+                                OutputSamples(psg, writer, (command & 0x0F) + 1);
+                                break;
+
+                            // game gear stereo shift, ignore for now
+                            case 0x4F:
+                                int stereoByte = vgmFile.VgmData[playCursor++];
+                                WriteLine($"GG Stereo Write: 0x{stereoByte:X2}");
+                                break;
+
+                            default:
+                                Error.WriteLine("Unknown command: 0x{0:X2} at 0x{1:X4}", command, playCursor - 1);
+                                isError = true;
+                                playing = false;
+                                break;
+                        }
+                    }
                 }
+
+                if (!isError)
+                {
+                    // write samples to wav
+                    using (FileStream output = File.Open($"{vgmFileName}.wav", FileMode.Create))
+                    {
+                        using (BinaryWriter writer = new BinaryWriter(output, Encoding.ASCII, true))
+                        {
+                            WriteWavHeader(writer, (uint)samples.Length, 2, _sampleRate, 16);
+                        }
+
+                        samples.Seek(0, SeekOrigin.Begin);
+                        samples.CopyTo(output);
+                    }
+                }
+            }
+
+
+            if (Debugger.IsAttached)
+            {
+                Write("Press any key to continue...");
+                ReadKey(true);
             }
         }
 
-        static int GetPeriodForFrequency(int clockFrequency, double frequency)
+        static void WriteWavHeader(BinaryWriter writer, uint dataSize, ushort channelCount, uint sampleRate, uint bitsPerSample)
         {
-            // f = clock / (32 x reg)
-            // reg = (clock / f) / 32
-            return (int)(clockFrequency / frequency) / 32;
+            // write RIFF chunk
+            writer.Write(Encoding.ASCII.GetBytes("RIFF"));  // chunk id
+            writer.Write(36 + dataSize);                    // chunk data size
+
+            writer.Write(Encoding.ASCII.GetBytes("WAVE"));  // RIFF type id
+
+            byte[] formatChunkID = Encoding.ASCII.GetBytes("fmt ");
+            int formatChunkSize = 16;
+            short compressionType = 1; // PCM (Uncompressed)
+
+            uint bytesPerSample = (bitsPerSample + 7) / 8;
+            ushort blockAlignment = (ushort)(bytesPerSample * channelCount);
+            uint bytesPerSecond = blockAlignment * sampleRate;
+
+            // write fmt chunk
+            writer.Write(formatChunkID);
+            writer.Write(formatChunkSize);
+            writer.Write(compressionType);
+            writer.Write(channelCount);
+            writer.Write(sampleRate);
+            writer.Write(bytesPerSecond);
+            writer.Write(blockAlignment);
+            writer.Write((ushort)bitsPerSample);
+
+            byte[] dataChunkId = Encoding.ASCII.GetBytes("data");
+
+            // write data chunk
+            writer.Write(dataChunkId);
+            writer.Write(dataSize);
+
+            // flush the writer to ensure header is written before returning
+            writer.Flush();
         }
 
-        static void SetTone(SN76489 psg, int channel, double frequency)
+        static void OutputSamples(SN76489 psg, BinaryWriter writer, int sampleCount)
         {
-            // get required period for the frequency
-            int period = GetPeriodForFrequency(ClockFrequencyNTSC, frequency);
+            for (int i = 0; i < sampleCount; i++)
+            {
+                _updateClock += _sampleFrequency;
 
-            // split into lower 4 and upper 6 bits
-            int loData = period & 0x0F;
-            int hiData = (period >> 4) & 0x3F;
+                uint updateCycles = (uint)_updateClock; // truncate to get integer clock value, keeping the decimal part to accumulate
 
-            // generate data bytes for psg
-            byte latch = (byte)(0x80 | (channel * 2) << 4 | loData);
-            byte data = (byte)hiData;
+                psg.Update(updateCycles);
 
-            psg.WriteData(latch);
-            psg.WriteData(data);
-        }
+                var sample = psg.Output;
 
-        static void SetVolume(SN76489 psg, int channel, byte volume)
-        {
-            byte latch = (byte)(0x80 | ((channel * 2 + 1) << 4) | (volume & 0x0F));
+                writer.Write(sample.Left);
+                writer.Write(sample.Right);
 
-            psg.WriteData(latch);
+                _updateClock -= updateCycles;
+            }
         }
     }
 }

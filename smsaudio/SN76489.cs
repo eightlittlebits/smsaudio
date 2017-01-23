@@ -29,12 +29,23 @@ namespace smsaudio
 
         ushort _lsfr = 0x8000;
 
-        BinaryWriter _outputStream;
-
-        public SN76489(BinaryWriter outputStream, int shiftRegisterWidth, int tappedBits)
+        public AudioFrame<short> Output
         {
-            _outputStream = outputStream;
+            get
+            {
+                double sample = 0;
 
+                sample += _channelVolume[0] * (_channelOutput[0] - 0.5);
+                sample += _channelVolume[1] * (_channelOutput[1] - 0.5);
+                sample += _channelVolume[2] * (_channelOutput[2] - 0.5);
+                sample += _channelVolume[3] * (_channelOutput[3] - 0.5);
+
+                return new AudioFrame<short>((short)sample, (short)sample);
+            }
+        }
+
+        public SN76489(int shiftRegisterWidth, int tappedBits)
+        {
             _shiftRegisterWidth = shiftRegisterWidth;
             _tappedBits = tappedBits;
 
@@ -152,16 +163,6 @@ namespace smsaudio
                     _lsfr = (ushort)((_lsfr >> 1) | (feedback << (_shiftRegisterWidth - 1)));
                     _channelOutput[Noise] = _lsfr & 1;
                 }
-
-                // mix channel output and output sample
-                double sample = 0;
-
-                for (int i = 0; i < ChannelCount; i++)
-                {
-                    sample += _channelVolume[i] * (_channelOutput[i] - 0.5);
-                }
-
-                _outputStream.Write((short)sample);
             }
         }
 
