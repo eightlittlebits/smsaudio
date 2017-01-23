@@ -7,8 +7,10 @@ namespace smsaudio
     {
         const int ChannelCount = 4;
 
-        int _clock = 0;
         double[] _volumeTable;
+
+        uint _updateClock;
+        uint _updateInterval = 16;
 
         ushort[] _registers;
         int _latchedRegister;
@@ -100,10 +102,12 @@ namespace smsaudio
 
         public void Update(uint cycleCount)
         {
-            _clock -= (int)cycleCount;
+            _updateClock += cycleCount;
 
-            while (_clock <= 0)
+            while (_updateClock >= _updateInterval)
             {
+                _updateClock -= _updateInterval;
+
                 // update tone channels
                 for (int i = 0; i < 3; i++)
                 {
@@ -154,8 +158,6 @@ namespace smsaudio
                 }
 
                 _outputStream.Write((short)sample);
-
-                _clock += 16;
             }
         }
 
