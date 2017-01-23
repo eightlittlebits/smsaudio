@@ -7,17 +7,22 @@ namespace smsaudio
     {
         const int ChannelCount = 4;
 
-        double[] _volumeTable;
+        const int Tone2 = 2;
+        const int Noise = 3;
+
+        readonly double[] _volumeTable;
 
         uint _updateClock;
         uint _updateInterval = 16;
 
-        ushort[] _registers;
-        int _latchedRegister;
-        bool _toneRegisterLatched;
+        int _latchedChannel;
+        bool _volumeRegisterLatched;
 
-        int[] _channelCounter;
-        int[] _channelOutput;
+        readonly int[] _channelControl = new int[ChannelCount];
+        readonly double[] _channelVolume = new double[ChannelCount];
+
+        readonly int[] _channelCounter = new int[ChannelCount];
+        readonly int[] _channelOutput = new int[ChannelCount];
 
         readonly int _shiftRegisterWidth;
         readonly int _tappedBits;
@@ -33,28 +38,15 @@ namespace smsaudio
             _shiftRegisterWidth = shiftRegisterWidth;
             _tappedBits = tappedBits;
 
-            _registers = new ushort[8];
-            _channelCounter = new int[ChannelCount];
-            _channelOutput = new int[ChannelCount];
-
-            // initialise registers
-            for (int i = 0; i < ChannelCount; i++)
-            {
-                _registers[i * 2] = 0;      // tone/noise
-                _registers[i * 2 + 1] = 0x0F; // volume
-
-                _channelOutput[i] = -1;  // start output high
-            }
-
-            _latchedRegister = 0;
-            _toneRegisterLatched = true;
+            _latchedChannel = 0;
+            _volumeRegisterLatched = false;
 
             _volumeTable = ComputeVolumeLookup();
         }
 
         private static double[] ComputeVolumeLookup()
         {
-            int maxVolume = 8000;
+            int maxVolume = short.MaxValue / 2;
             double attenuation = Math.Pow(10, -0.1); // 2dB attenuation
 
             double[] volumeTable = new double[16];
@@ -73,36 +65,39 @@ namespace smsaudio
 
         public void WriteData(byte data)
         {
-            // if bit 7 is set it's a latch/data byte
+            bool latchByte = false;
+
             if ((data & 0x80) == 0x80)
             {
-                // update the latched register from the data byte
-                //   %1cctdddd
-                //     |||````--Data
-                //     ||`------Type
-                //     ``-------Channel
+                latchByte = true;
 
-                _latchedRegister = (data >> 4) & 0x07;
-                _toneRegisterLatched = (data & 0x10) == 0x00;
-
-                // set the low 4 bits of the latched register
-                _registers[_latchedRegister] = (ushort)((_registers[_latchedRegister] & ~0x0F) | (data & 0x0F));
-
+                _latchedChannel = (data >> 5) & 0x03;
+                _volumeRegisterLatched = (data & 0x10) == 0x10;
             }
-            // otherwise it's a data byte
-            else
+
+            if (_volumeRegisterLatched)
             {
-                // if a tone register is latched the lower 6 bits are placed
-                // into the high 6 bits of the register
-                if (_toneRegisterLatched)
+                _channelVolume[_latchedChannel] = _volumeTable[data & 0x0F];
+            }
+            else if (_latchedChannel < 3)
+            {
+                // writing to a tone control register?
+                if (latchByte)
                 {
-                    _registers[_latchedRegister] = (ushort)((_registers[_latchedRegister] & 0x0F) | ((data & 0x3F) << 4));
+                    // latch byte sets the lower 4 bits of the register
+                    _channelControl[_latchedChannel] = (_channelControl[_latchedChannel] & ~0x0F) | (data & 0x0F);
                 }
-                // for a volume register set the low 4 bits of the latched register
                 else
                 {
-                    _registers[_latchedRegister] = (ushort)((_registers[_latchedRegister] & ~0x0F) | (data & 0x0F));
+                    // data byte sets the upper 6 bits of the register
+                    _channelControl[_latchedChannel] = (_channelControl[_latchedChannel] & 0x0F) | ((data & 0x3F) << 4);
                 }
+            }
+            else
+            {
+                // noise register
+                _channelControl[_latchedChannel] = data & 0x07;
+                _lsfr = 0x8000;
             }
         }
 
@@ -118,32 +113,32 @@ namespace smsaudio
                 for (int i = 0; i < 3; i++)
                 {
                     // if the tone register period is 0 then skip
-                    if (_registers[i * 2] == 0)
+                    if (_channelControl[i] == 0)
                         continue;
 
                     // update channel counter, if zero flip output and reload from tone register
                     if (--_channelCounter[i] <= 0)
                     {
-                        _channelCounter[i] += _registers[i * 2];
-                        _channelOutput[i] *= -1;
+                        _channelCounter[i] = _channelControl[i];
+                        _channelOutput[i] ^= 1;
                     }
                 }
 
                 // update noise channel
-                if (--_channelCounter[3] <= 0)
+                if (--_channelCounter[Noise] <= 0)
                 {
                     // reset counter
-                    switch (_registers[6] & 0x03)
+                    switch (_channelControl[Noise] & 0x03)
                     {
-                        case 0: _channelCounter[3] += 0x20; break;
-                        case 1: _channelCounter[3] += 0x40; break;
-                        case 2: _channelCounter[3] += 0x80; break;
-                        case 3: _channelCounter[3] += _registers[4]; break;
+                        case 0: _channelCounter[Noise] = 0x20; break;
+                        case 1: _channelCounter[Noise] = 0x40; break;
+                        case 2: _channelCounter[Noise] = 0x80; break;
+                        case 3: _channelCounter[Noise] = _channelControl[Tone2]; break;
                     }
 
                     int feedback;
 
-                    if ((_registers[6] & 0x04) == 0x00)
+                    if ((_channelControl[Noise] & 0x04) == 0x00)
                     {
                         // periodic noise
                         feedback = _lsfr & 1;
@@ -151,26 +146,27 @@ namespace smsaudio
                     else
                     {
                         // white noise
-                        feedback  = parity(_lsfr & _tappedBits);
+                        feedback = parity(_lsfr & _tappedBits);
                     }
 
                     _lsfr = (ushort)((_lsfr >> 1) | (feedback << (_shiftRegisterWidth - 1)));
-                    _channelOutput[3] = _lsfr & 1;
+                    _channelOutput[Noise] = _lsfr & 1;
                 }
 
                 // mix channel output and output sample
-                int sample = 0;
+                double sample = 0;
 
                 for (int i = 0; i < ChannelCount; i++)
                 {
-                    sample += (int)(_volumeTable[_registers[(i * 2) + 1]] * _channelOutput[i]);
+                    sample += _channelVolume[i] * (_channelOutput[i] - 0.5);
                 }
 
                 _outputStream.Write((short)sample);
             }
         }
 
-        private int parity(int v)
+        // TODO(david): make this a local function when C#7 comes along
+        int parity(int v)
         {
             v ^= v >> 8;
             v ^= v >> 4;
