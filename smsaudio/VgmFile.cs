@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Text;
 using System.IO;
+using System.IO.Compression;
 
 namespace smsaudio
 {
@@ -17,9 +18,18 @@ namespace smsaudio
 
         public static VgmFile Load(Stream stream)
         {
+            Stream readStream;
+
+            if (IsVgmGzipped(stream))
+            {
+                readStream = DecompressVgm(stream);
+            }
+            else
+                readStream = stream;
+
             VgmFile file = new VgmFile();
 
-            using (var reader = new BinaryReader(stream, Encoding.Unicode, true))
+            using (var reader = new BinaryReader(readStream, Encoding.Unicode, true))
             {
                 file.Header = ReadVgmHeader(reader);
 
@@ -55,7 +65,41 @@ namespace smsaudio
 
             return file;
         }
+        
+        private static bool IsVgmGzipped(Stream stream)
+        {
+            // read the first two bytes to get identifier
+            byte[] id = new byte[2];
+            stream.Read(id, 0, 2);
 
+            // reset the stream
+            stream.Seek(0, SeekOrigin.Begin);
+
+            bool isGzipped = false;
+
+            if (id[0] == 0x1F && id[1] == 0x8B)
+            {
+                isGzipped = true;
+            }
+
+            return isGzipped;
+        }
+
+        private static Stream DecompressVgm(Stream stream)
+        {
+            MemoryStream memStream = new MemoryStream();
+
+            // decompress the gzipped stream into a memory stream and return the memory stream
+            using (GZipStream decompress = new GZipStream(stream, CompressionMode.Decompress, true))
+            {
+                decompress.CopyTo(memStream);
+            }
+
+            memStream.Seek(0, SeekOrigin.Begin);
+
+            return memStream;
+        }
+        
         static VgmHeader ReadVgmHeader(BinaryReader reader)
         {
             uint identifier = reader.ReadUInt32();
