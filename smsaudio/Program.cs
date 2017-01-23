@@ -18,7 +18,7 @@ namespace smsaudio
         {
             using (BinaryWriter writer = new BinaryWriter(File.Open("output.raw", FileMode.Create)))
             {
-                SN76489 psg = new SN76489(writer);
+                SN76489 psg = new SN76489(writer, 16, 0x09);
 
                 //SetTone(psg, 0, 440);
                 //SetTone(psg, 1, 329.6);

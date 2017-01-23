@@ -19,13 +19,19 @@ namespace smsaudio
         int[] _channelCounter;
         int[] _channelOutput;
 
+        readonly int _shiftRegisterWidth;
+        readonly int _tappedBits;
+
         ushort _lsfr = 0x8000;
 
         BinaryWriter _outputStream;
 
-        public SN76489(BinaryWriter outputStream)
+        public SN76489(BinaryWriter outputStream, int shiftRegisterWidth, int tappedBits)
         {
             _outputStream = outputStream;
+
+            _shiftRegisterWidth = shiftRegisterWidth;
+            _tappedBits = tappedBits;
 
             _registers = new ushort[8];
             _channelCounter = new int[ChannelCount];
@@ -135,18 +141,21 @@ namespace smsaudio
                         case 3: _channelCounter[3] += _registers[4]; break;
                     }
 
+                    int feedback;
+
                     if ((_registers[6] & 0x04) == 0x00)
                     {
                         // periodic noise
-                        _lsfr = (ushort)((_lsfr >> 1) | ((_lsfr & 1) << 15));
-                        _channelOutput[3] = _lsfr & 1;
+                        feedback = _lsfr & 1;
                     }
                     else
                     {
                         // white noise
-                        _lsfr = (ushort)((_lsfr >> 1) | (parity(_lsfr & 0x09) << 15));
-                        _channelOutput[3] = _lsfr & 1;
+                        feedback  = parity(_lsfr & _tappedBits);
                     }
+
+                    _lsfr = (ushort)((_lsfr >> 1) | (feedback << (_shiftRegisterWidth - 1)));
+                    _channelOutput[3] = _lsfr & 1;
                 }
 
                 // mix channel output and output sample
