@@ -123,58 +123,67 @@ namespace smsaudio
                 // update tone channels
                 for (int i = 0; i < 3; i++)
                 {
-                    // if the tone register period is 0 then skip
-                    if (_channelControl[i] == 0)
-                        continue;
-
-                    // update channel counter, if zero flip output and reload from tone register
-                    if (--_channelCounter[i] <= 0)
-                    {
-                        _channelCounter[i] = _channelControl[i];
-                        _channelOutput[i] ^= 1;
-                    }
+                    UpdateToneChannel(i);
                 }
 
-                // update noise channel
-                if (--_channelCounter[Noise] <= 0)
-                {
-                    // reset counter
-                    switch (_channelControl[Noise] & 0x03)
-                    {
-                        case 0: _channelCounter[Noise] = 0x20; break;
-                        case 1: _channelCounter[Noise] = 0x40; break;
-                        case 2: _channelCounter[Noise] = 0x80; break;
-                        case 3: _channelCounter[Noise] = _channelControl[Tone2]; break;
-                    }
-
-                    int feedback;
-
-                    if ((_channelControl[Noise] & 0x04) == 0x00)
-                    {
-                        // periodic noise
-                        feedback = _lsfr & 1;
-                    }
-                    else
-                    {
-                        // white noise
-                        feedback = parity(_lsfr & _tappedBits);
-                    }
-
-                    _lsfr = (ushort)((_lsfr >> 1) | (feedback << (_shiftRegisterWidth - 1)));
-                    _channelOutput[Noise] = _lsfr & 1;
-                }
+                UpdateNoiseChannel();
             }
         }
 
-        // TODO(david): make this a local function when C#7 comes along
-        int parity(int v)
+        private void UpdateToneChannel(int toneChannel)
         {
-            v ^= v >> 8;
-            v ^= v >> 4;
-            v ^= v >> 2;
-            v ^= v >> 1;
+            // if the tone register period is 0 then skip
+            if (_channelControl[toneChannel] == 0)
+                return;
 
-            return v;
+            // update channel counter, if zero flip output and reload from tone register
+            if (--_channelCounter[toneChannel] <= 0)
+            {
+                _channelCounter[toneChannel] = _channelControl[toneChannel];
+                _channelOutput[toneChannel] ^= 1;
+            }
+        }
+
+        private void UpdateNoiseChannel()
+        {
+            // update noise channel
+            if (--_channelCounter[Noise] <= 0)
+            {
+                // reset counter
+                switch (_channelControl[Noise] & 0x03)
+                {
+                    case 0: _channelCounter[Noise] = 0x20; break;
+                    case 1: _channelCounter[Noise] = 0x40; break;
+                    case 2: _channelCounter[Noise] = 0x80; break;
+                    case 3: _channelCounter[Noise] = _channelControl[Tone2]; break;
+                }
+
+                int feedback;
+
+                if ((_channelControl[Noise] & 0x04) == 0x00)
+                {
+                    // periodic noise
+                    feedback = _lsfr & 1;
+                }
+                else
+                {
+                    int HasOddParity(int v)
+                    {
+                        v ^= v >> 8;
+                        v ^= v >> 4;
+                        v ^= v >> 2;
+                        v ^= v >> 1;
+
+                        return v;
+                    }
+
+                    // white noise
+                    feedback = HasOddParity(_lsfr & _tappedBits);
+                }
+
+                _lsfr = (ushort)((_lsfr >> 1) | (feedback << (_shiftRegisterWidth - 1)));
+                _channelOutput[Noise] = _lsfr & 1;
+            }
         }
     }
 }
