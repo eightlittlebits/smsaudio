@@ -51,6 +51,9 @@
     <Compile Include="SN76489.cs" />
     <Compile Include="VgmFile.cs" />
     <Compile Include="VgmHeader.cs" />
+    <Compile Include="WaveFileWriter.cs" />
+    <Compile Include="WaveFormat.cs" />
+    <Compile Include="WaveFormatTag.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
