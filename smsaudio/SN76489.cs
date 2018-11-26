@@ -26,7 +26,7 @@ namespace smsaudio
         readonly int _shiftRegisterWidth;
         readonly int _tappedBits;
 
-        ushort _lsfr = 0x8000;
+        ushort _lfsr = 0x8000;
 
         public AudioFrame<short> Output
         {
@@ -107,7 +107,7 @@ namespace smsaudio
             {
                 // noise register
                 _channelControl[_latchedChannel] = data & 0x07;
-                _lsfr = 0x8000;
+                _lfsr = 0x8000;
             }
         }
 
@@ -162,7 +162,7 @@ namespace smsaudio
                 if ((_channelControl[Noise] & 0x04) == 0x00)
                 {
                     // periodic noise
-                    feedback = _lsfr & 1;
+                    feedback = _lfsr & 1;
                 }
                 else
                 {
@@ -177,11 +177,11 @@ namespace smsaudio
                     }
 
                     // white noise
-                    feedback = HasOddParity(_lsfr & _tappedBits);
+                    feedback = HasOddParity(_lfsr & _tappedBits);
                 }
 
-                _lsfr = (ushort)((_lsfr >> 1) | (feedback << (_shiftRegisterWidth - 1)));
-                _channelOutput[Noise] = _lsfr & 1;
+                _lfsr = (ushort)((_lfsr >> 1) | (feedback << (_shiftRegisterWidth - 1)));
+                _channelOutput[Noise] = _lfsr & 1;
             }
         }
     }
