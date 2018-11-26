@@ -144,6 +144,12 @@ namespace smsaudio
                 header.YM2612Clock = reader.ReadUInt32();
                 header.YM2151Clock = reader.ReadUInt32();
             }
+            else if (header.SN76489Clock > 0) 
+            {
+                // default feedback pattern and shift register width when using the SN76489 on v1.01 and earlier
+                header.SN76489Feedback = 0x0009;
+                header.SN76489ShiftRegisterWidth = 16;
+            }
 
             if (header.Version >= 0x150)
             {
