@@ -49,6 +49,7 @@
   <ItemGroup>
     <Compile Include="AudioFrame.cs" />
     <Compile Include="Gd3Tag.cs" />
+    <Compile Include="Options.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SN76489.cs" />

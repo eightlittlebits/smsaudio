@@ -11,9 +11,13 @@ namespace smsaudio
         static uint _sampleRate = 44100;
         static double _sampleFrequency;
 
+        static Options _options;
+
         static void Main(string[] args)
         {
-            string vgmPath = args[0];
+            _options = Options.ParseCommandLine(args);
+
+            string vgmPath = _options.Filename;
 
             if (!File.Exists(vgmPath))
             {
@@ -30,20 +34,22 @@ namespace smsaudio
                 vgmFile = VgmFile.Load(fileStream);
             }
 
-            //// print file info
-            //WriteLine($"Filename: {Path.GetFileName(vgmPath)}");
-            //WriteLine();
-            //WriteLine($"Track:    {vgmFile.Gd3.English.TrackName}");
-            //WriteLine($"Game:     {vgmFile.Gd3.English.GameName}");
-            //WriteLine($"System:   {vgmFile.Gd3.English.SystemName}");
-            //WriteLine($"Composer: {vgmFile.Gd3.English.TrackAuthor}");
+            if (_options.PrintVgmInfo)
+            {
+                WriteLine($"Filename: {Path.GetFileName(vgmPath)}");
+                WriteLine();
+                WriteLine($"Track:    {vgmFile.Gd3.English.TrackName}");
+                WriteLine($"Game:     {vgmFile.Gd3.English.GameName}");
+                WriteLine($"System:   {vgmFile.Gd3.English.SystemName}");
+                WriteLine($"Composer: {vgmFile.Gd3.English.TrackAuthor}");
 
-            //WriteLine($"Release:  {vgmFile.Gd3.ReleaseDate}");
-            //WriteLine($"VGM By:   {vgmFile.Gd3.VgmAuthor}");
-            //WriteLine();
-            //WriteLine("Notes:");
-            //WriteLine(vgmFile.Gd3.Notes);
-            //WriteLine();
+                WriteLine($"Release:  {vgmFile.Gd3.ReleaseDate}");
+                WriteLine($"VGM By:   {vgmFile.Gd3.VgmAuthor}");
+                WriteLine();
+                WriteLine("Notes:");
+                WriteLine(vgmFile.Gd3.Notes);
+                WriteLine();
+            }
 
             // generate the audio samples into a memory stream
             using (WaveFileWriter writer = new WaveFileWriter(File.Open($"{vgmFileName}.wav", FileMode.Create), new WaveFormat(_sampleRate, 16, 2)))
