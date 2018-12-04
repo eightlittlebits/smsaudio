@@ -149,10 +149,9 @@ namespace smsaudio
 
                 psg.Update(updateCycles);
 
-                var sample = psg.Output;
-
-                writer.WriteSample(sample.Left);
-                writer.WriteSample(sample.Right);
+                var (left, right) = psg.Output;
+                writer.WriteSample(left);
+                writer.WriteSample(right);
 
                 _updateClock -= updateCycles;
             }
