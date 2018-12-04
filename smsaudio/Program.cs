@@ -73,14 +73,14 @@ namespace smsaudio
                     switch (command)
                     {
                         // 0x50 dd: PSG(SN76489 / SN76496) write value dd
-                        case 0x50:
+                        case VgmCommand.PSGWriteDD:
                             psg.WriteData(vgmFile.VgmData[playCursor++]);
                             break;
 
                         //0x61 nn nn : Wait n samples, n can range from 0 to 65535 (approx 1.49
                         //             seconds). Longer pauses than this are represented by multiple
                         //             wait commands.
-                        case 0x61:
+                        case VgmCommand.WaitNSamples:
                             int sampleCount = vgmFile.VgmData[playCursor++];
                             sampleCount |= vgmFile.VgmData[playCursor++] << 8;
 
@@ -88,17 +88,17 @@ namespace smsaudio
                             break;
 
                         // 0x62: wait 735 samples(60th of a second), a shortcut for 0x61 0xdf 0x02
-                        case 0x62:
+                        case VgmCommand.Wait735Samples:
                             OutputPSGSamples(psg, writer, 735);
                             break;
 
                         // 0x63: wait 882 samples(50th of a second), a shortcut for 0x61 0x72 0x03
-                        case 0x63:
+                        case VgmCommand.Wait882Samples:
                             OutputPSGSamples(psg, writer, 882);
                             break;
 
                         // 0x66: end of sound data
-                        case 0x66:
+                        case VgmCommand.EndOfSoundData:
                             if (vgmFile.LoopOffset != 0 && loopCount < loopLimit)
                             {
                                 playCursor = vgmFile.LoopOffset;
@@ -111,10 +111,14 @@ namespace smsaudio
                             break;
 
                         // 0x7n: wait n+1 samples, n can range from 0 to 15.
-                        case 0x70: case 0x71: case 0x72: case 0x73:
-                        case 0x74: case 0x75: case 0x76: case 0x77:
-                        case 0x78: case 0x79: case 0x7A: case 0x7B:
-                        case 0x7C: case 0x7D: case 0x7E: case 0x7F:
+                        case VgmCommand.Wait01Samples: case VgmCommand.Wait02Samples: 
+                        case VgmCommand.Wait03Samples: case VgmCommand.Wait04Samples: 
+                        case VgmCommand.Wait05Samples: case VgmCommand.Wait06Samples: 
+                        case VgmCommand.Wait07Samples: case VgmCommand.Wait08Samples: 
+                        case VgmCommand.Wait09Samples: case VgmCommand.Wait10Samples: 
+                        case VgmCommand.Wait11Samples: case VgmCommand.Wait12Samples: 
+                        case VgmCommand.Wait13Samples: case VgmCommand.Wait14Samples: 
+                        case VgmCommand.Wait15Samples: case VgmCommand.Wait16Samples: 
                             OutputPSGSamples(psg, writer, (command & 0x0F) + 1);
                             break;
 

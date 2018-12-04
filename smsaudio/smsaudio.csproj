@@ -53,6 +53,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SN76489.cs" />
+    <Compile Include="VgmCommand.cs" />
     <Compile Include="VgmFile.cs" />
     <Compile Include="VgmHeader.cs" />
     <Compile Include="WaveFileWriter.cs" />
