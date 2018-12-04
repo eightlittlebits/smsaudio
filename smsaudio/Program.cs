@@ -1,15 +1,15 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.IO;
-
-using static System.Console;
 
 namespace smsaudio
 {
     class Program
     {
-        static double _updateClock;
-        static uint _sampleRate = 44100;
-        static double _sampleFrequency;
+        const uint _sampleRate = 44100;
+
+        static double _psgUpdateClock;
+        static double _psgClocksPerSample;
 
         static Options _options;
 
@@ -21,7 +21,7 @@ namespace smsaudio
 
             if (!File.Exists(vgmPath))
             {
-                WriteLine($"File {vgmPath} not found.");
+                Console.WriteLine($"File {vgmPath} not found.");
                 return;
             }
 
@@ -36,27 +36,27 @@ namespace smsaudio
 
             if (_options.PrintVgmInfo)
             {
-                WriteLine($"Filename: {Path.GetFileName(vgmPath)}");
-                WriteLine();
-                WriteLine($"Track:    {vgmFile.Gd3.English.TrackName}");
-                WriteLine($"Game:     {vgmFile.Gd3.English.GameName}");
-                WriteLine($"System:   {vgmFile.Gd3.English.SystemName}");
-                WriteLine($"Composer: {vgmFile.Gd3.English.TrackAuthor}");
+                Console.WriteLine($"Filename: {Path.GetFileName(vgmPath)}");
+                Console.WriteLine();
+                Console.WriteLine($"Track:    {vgmFile.Gd3.English.TrackName}");
+                Console.WriteLine($"Game:     {vgmFile.Gd3.English.GameName}");
+                Console.WriteLine($"System:   {vgmFile.Gd3.English.SystemName}");
+                Console.WriteLine($"Composer: {vgmFile.Gd3.English.TrackAuthor}");
 
-                WriteLine($"Release:  {vgmFile.Gd3.ReleaseDate}");
-                WriteLine($"VGM By:   {vgmFile.Gd3.VgmAuthor}");
-                WriteLine();
-                WriteLine("Notes:");
-                WriteLine(vgmFile.Gd3.Notes);
-                WriteLine();
+                Console.WriteLine($"Release:  {vgmFile.Gd3.ReleaseDate}");
+                Console.WriteLine($"VGM By:   {vgmFile.Gd3.VgmAuthor}");
+                Console.WriteLine();
+                Console.WriteLine("Notes:");
+                Console.WriteLine(vgmFile.Gd3.Notes);
+                Console.WriteLine();
             }
 
             // generate the audio samples into a memory stream
-            using (WaveFileWriter writer = new WaveFileWriter(File.Open($"{vgmFileName}.wav", FileMode.Create), new WaveFormat(_sampleRate, 16, 2)))
+            using (var writer = new WaveFileWriter(File.Open($"{vgmFileName}.wav", FileMode.Create), new WaveFormat(_sampleRate, 16, 2)))
             {
-                SN76489 psg = new SN76489(vgmFile.Header.SN76489ShiftRegisterWidth, vgmFile.Header.SN76489Feedback);
+                var psg = new SN76489(vgmFile.Header.SN76489ShiftRegisterWidth, vgmFile.Header.SN76489Feedback);
 
-                _sampleFrequency = vgmFile.Header.SN76489Clock / (double)_sampleRate;
+                _psgClocksPerSample = vgmFile.Header.SN76489Clock / (double)_sampleRate;
 
                 bool playing = true;
 
@@ -67,7 +67,7 @@ namespace smsaudio
 
                 while (playing)
                 {
-                    int command = vgmFile.VgmData[playCursor++];
+                    byte command = vgmFile.VgmData[playCursor++];
 
                     switch (command)
                     {
@@ -83,17 +83,17 @@ namespace smsaudio
                             int sampleCount = vgmFile.VgmData[playCursor++];
                             sampleCount |= vgmFile.VgmData[playCursor++] << 8;
 
-                            OutputSamples(psg, writer, sampleCount);
+                            OutputPSGSamples(psg, writer, sampleCount);
                             break;
 
                         // 0x62: wait 735 samples(60th of a second), a shortcut for 0x61 0xdf 0x02
                         case 0x62:
-                            OutputSamples(psg, writer, 735);
+                            OutputPSGSamples(psg, writer, 735);
                             break;
 
                         // 0x63: wait 882 samples(50th of a second), a shortcut for 0x61 0x72 0x03
                         case 0x63:
-                            OutputSamples(psg, writer, 882);
+                            OutputPSGSamples(psg, writer, 882);
                             break;
 
                         // 0x66: end of sound data
@@ -114,38 +114,37 @@ namespace smsaudio
                         case 0x74: case 0x75: case 0x76: case 0x77:
                         case 0x78: case 0x79: case 0x7A: case 0x7B:
                         case 0x7C: case 0x7D: case 0x7E: case 0x7F:
-                            OutputSamples(psg, writer, (command & 0x0F) + 1);
+                            OutputPSGSamples(psg, writer, (command & 0x0F) + 1);
                             break;
 
                         // game gear stereo shift, ignore for now
                         case 0x4F:
                             int stereoByte = vgmFile.VgmData[playCursor++];
-                            WriteLine($"GG Stereo Write: 0x{stereoByte:X2}");
+                            Console.WriteLine($"GG Stereo Write: 0x{stereoByte:X2}");
                             break;
 
                         default:
-                            Error.WriteLine("Unknown command: 0x{0:X2} at 0x{1:X4}", command, playCursor - 1);
+                            Console.Error.WriteLine("Unknown command: 0x{0:X2} at 0x{1:X4}", command, playCursor - 1);
                             playing = false;
                             break;
                     }
                 }
             }
 
-
             if (Debugger.IsAttached)
             {
-                Write("Press any key to continue...");
-                ReadKey(true);
+                Console.Write("Press any key to continue...");
+                Console.ReadKey(true);
             }
         }
 
-        static void OutputSamples(SN76489 psg, WaveFileWriter writer, int sampleCount)
+        static void OutputPSGSamples(SN76489 psg, WaveFileWriter writer, int sampleCount)
         {
             for (int i = 0; i < sampleCount; i++)
             {
-                _updateClock += _sampleFrequency;
+                _psgUpdateClock += _psgClocksPerSample;
 
-                uint updateCycles = (uint)_updateClock; // truncate to get integer clock value, keeping the decimal part to accumulate
+                uint updateCycles = (uint)_psgUpdateClock; // truncate to get integer clock value, keeping the decimal part to accumulate
 
                 psg.Update(updateCycles);
 
@@ -153,7 +152,7 @@ namespace smsaudio
                 writer.WriteSample(left);
                 writer.WriteSample(right);
 
-                _updateClock -= updateCycles;
+                _psgUpdateClock -= updateCycles;
             }
         }
     }

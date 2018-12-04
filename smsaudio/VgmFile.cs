@@ -27,7 +27,7 @@ namespace smsaudio
             else
                 readStream = stream;
 
-            VgmFile file = new VgmFile();
+            var file = new VgmFile();
 
             using (var reader = new BinaryReader(readStream, Encoding.Unicode, true))
             {
@@ -87,10 +87,10 @@ namespace smsaudio
 
         private static Stream DecompressVgm(Stream stream)
         {
-            MemoryStream memStream = new MemoryStream();
+            var memStream = new MemoryStream();
 
             // decompress the gzipped stream into a memory stream and return the memory stream
-            using (GZipStream decompress = new GZipStream(stream, CompressionMode.Decompress, true))
+            using (var decompress = new GZipStream(stream, CompressionMode.Decompress, true))
             {
                 decompress.CopyTo(memStream);
             }
