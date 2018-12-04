@@ -3,6 +3,7 @@
     class Options
     {
         public bool PrintVgmInfo { get; private set; }
+        public bool MultiChannelOutput { get; private set; }
 
         public string Filename { get; private set; }
 
@@ -18,6 +19,10 @@
                 {
                     case "--info":
                         options.PrintVgmInfo = true;
+                        break;
+
+                    case "--multichannel":
+                        options.MultiChannelOutput = true;
                         break;
 
                     default:

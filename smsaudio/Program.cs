@@ -52,7 +52,8 @@ namespace smsaudio
             }
 
             // generate the audio samples into a memory stream
-            using (var writer = new WaveFileWriter(File.Open($"{vgmFileName}.wav", FileMode.Create), new WaveFormat(_sampleRate, 16, 2)))
+            using (var writer = new WaveFileWriter(File.Open($"{vgmFileName}.wav", FileMode.Create), 
+                                                    new WaveFormat(_sampleRate, 16, (ushort)(_options.MultiChannelOutput ? 4 : 2))))
             {
                 var psg = new SN76489(vgmFile.Header.SN76489ShiftRegisterWidth, vgmFile.Header.SN76489Feedback);
 
@@ -148,9 +149,19 @@ namespace smsaudio
 
                 psg.Update(updateCycles);
 
-                var (left, right) = psg.Output;
-                writer.WriteSample(left);
-                writer.WriteSample(right);
+                if (!_options.MultiChannelOutput)
+                {
+                    var (left, right) = psg.Output;
+                    writer.WriteSample(left);
+                    writer.WriteSample(right);
+                }
+                else
+                {
+                    writer.WriteSample(psg.Channel0Output);
+                    writer.WriteSample(psg.Channel1Output);
+                    writer.WriteSample(psg.Channel2Output);
+                    writer.WriteSample(psg.Channel3Output);
+                }
 
                 _psgUpdateClock -= updateCycles;
             }

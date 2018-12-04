@@ -43,6 +43,11 @@ namespace smsaudio
             }
         }
 
+        public short Channel0Output => (short)(_channelVolume[0] * (_channelOutput[0] - 0.5));
+        public short Channel1Output => (short)(_channelVolume[1] * (_channelOutput[1] - 0.5));
+        public short Channel2Output => (short)(_channelVolume[2] * (_channelOutput[2] - 0.5));
+        public short Channel3Output => (short)(_channelVolume[3] * (_channelOutput[3] - 0.5));
+
         public SN76489(int shiftRegisterWidth, int tappedBits)
         {
             _shiftRegisterWidth = shiftRegisterWidth;
